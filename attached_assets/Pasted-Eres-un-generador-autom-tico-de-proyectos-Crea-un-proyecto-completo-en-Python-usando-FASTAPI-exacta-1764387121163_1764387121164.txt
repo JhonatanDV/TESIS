@@ -1,0 +1,210 @@
+Eres un generador automático de proyectos. Crea un proyecto completo en Python usando FASTAPI exactamente conforme al documento proporcionado (Sistema de Gestión Inteligente de Espacios Físicos con funcionalidades de IA, optimización, analítica y notificaciones). Genera un repositorio completo, funcional y estructurado, preparado para ejecutarse en Replit. Sigue las siguientes instrucciones de manera estricta:
+
+────────────────────────────────────────
+1) TECNOLOGÍAS Y DEPENDENCIAS
+────────────────────────────────────────
+ - Backend principal: FastAPI (ASGI).
+ - Servidor: uvicorn.
+ - ORM: SQLAlchemy Async + aiomysql para MySQL.
+ - Migraciones: Alembic.
+ - Serialización: Pydantic.
+ - Autenticación: OAuth2 password flow con JWT (python-jose) + passlib (bcrypt).
+ - Configuración: python-dotenv.
+ - IA: Integración con Google Gemini mediante Google Generative AI SDK para Python (módulo oficial).
+ - Tests: pytest + httpx + pytest-asyncio.
+ - Manejo de archivos: python-multipart.
+
+Dependencias mínimas en requirements.txt:
+fastapi
+uvicorn
+sqlalchemy
+aiomysql
+alembic
+python-dotenv
+pydantic
+python-jose
+passlib[bcrypt]
+google-generativeai
+pytest
+pytest-asyncio
+httpx
+
+────────────────────────────────────────
+2) CONEXIÓN A BASE DE DATOS
+────────────────────────────────────────
+Con base en el string proporcionado:
+
+navicat://conn.mysql@local/438B8041db8a0124?Conn.Host=localhost&Conn.Name=TESIS&Conn.Port=3306&Conn.Username=root
+
+El nombre real de la base de datos es: 438B8041db8a0124  
+Usuario: root  
+Host: localhost  
+Puerto: 3306  
+
+El proyecto debe usar variables de entorno:
+
+DATABASE_URL=mysql+aiomysql://root:<DB_PASSWORD>@localhost:3306/438B8041db8a0124  
+(Indicar en README alternativa sin contraseña y recomendación de usar contraseña.)
+
+Además, incluir *modalidad de desarrollo* con SQLite:
+
+DATABASE_URL=sqlite+aiosqlite:///./dev.db
+
+────────────────────────────────────────
+3) ESTRUCTURA DEL PROYECTO (GENERAR EXACTAMENTE)
+────────────────────────────────────────
+/app
+  main.py
+  config.py
+  core/
+    security.py          # JWT, hashing
+  db/
+    base.py              # Base declarative
+    session.py           # engine + session async
+    models.py            # Tablas según documento (Spaces, Resources, Assignments, Users, Categories, AIModels, UsageData)
+    crud.py
+    alembic/             # carpeta generada de migraciones
+  schemas/
+    (todos los modelos pydantic para requests/responses)
+  api/
+    v1/
+      auth.py
+      spaces.py
+      resources.py
+      assignments.py
+      analytics.py
+      notifications.py
+  services/
+    optimizer.py         # algoritmo heurístico inicial de optimización (según documento)
+    notifications.py
+    ai_gemini.py         # integración con Gemini (ver sección IA)
+scripts/
+  start.sh               # comando de arranque uvicorn
+  init_db.sh             # migraciones + datos iniciales
+tests/
+  test_auth.py
+  test_spaces.py
+.replit                  # comando de ejecución
+.env.example
+requirements.txt
+README.md
+
+────────────────────────────────────────
+4) ENDPOINTS (RESPETAR LOS DEFINIDOS EN EL DOCUMENTO)
+────────────────────────────────────────
+Autenticación:
+  POST /api/v1/auth/login
+  POST /api/v1/auth/refresh
+  POST /api/v1/auth/logout
+
+Spaces:
+  GET /api/v1/spaces
+  GET /api/v1/spaces/{id}
+  POST /api/v1/spaces
+  PUT /api/v1/spaces/{id}
+  DELETE /api/v1/spaces/{id}
+  GET /api/v1/spaces/available
+
+Resources:
+  GET /api/v1/resources
+  GET /api/v1/resources/{id}
+  POST /api/v1/resources
+  PUT /api/v1/resources/{id}
+  DELETE /api/v1/resources/{id}
+  GET /api/v1/resources/categories
+
+Assignments:
+  CRUD completo +
+  POST /api/v1/assignments/optimize  # obligatorio según documento
+
+Analytics (según documento):
+  GET /api/v1/analytics/usage
+  GET /api/v1/analytics/efficiency
+  GET /api/v1/analytics/predictions
+  POST /api/v1/analytics/simulate
+
+Notifications:
+  GET /api/v1/notifications
+  POST /api/v1/notifications
+  GET /api/v1/notifications/settings
+  PUT /api/v1/notifications/settings
+
+────────────────────────────────────────
+5) MODELOS BASADOS EN EL DOCUMENTO
+────────────────────────────────────────
+Crear en models.py las tablas exactas con atributos del documento:
+
+ - Spaces (id, nombre, tipo, capacidad, ubicación, características JSON, created_at, updated_at)
+ - Resources (id, nombre, tipo, estado, categoría, características JSON, created_at, updated_at)
+ - Assignments (id, space_id, resource_id, fecha, estado)
+ - Users (id, username, password_hash, rol)
+ - Categories (id, nombre, descripción)
+ - AIModels (id, nombre, versión, parámetros JSON)
+ - UsageData (id, space_id, resource_id, fecha, uso, métricas JSON)
+
+Mantener consistencia con descripciones, relaciones y requerimientos funcionales del documento.
+
+────────────────────────────────────────
+6) IA: INTEGRACIÓN CON GEMINI
+────────────────────────────────────────
+El motor de IA debe ser *Gemini*, no otro.
+
+Implementar archivo:
+
+services/ai_gemini.py
+
+Con funciones como:
+ - generate_predictions(data)
+ - optimize_space_allocation(data)
+ - analyze_usage_patterns(data)
+
+Usando el SDK oficial:
+
+import google.generativeai as genai
+
+Toda la IA debe ser implementada como placeholder funcional que llame Gemini con prompts bien definidos según roles del documento (optimización, predicciones, análisis).
+
+Agregar variable de entorno:
+
+GEMINI_API_KEY=<clave>
+
+────────────────────────────────────────
+7) SEGURIDAD Y AUTORIZACIÓN
+────────────────────────────────────────
+ - JWT con expiración corta para access y larga para refresh.
+ - Hash de contraseñas con bcrypt.
+ - Middleware o dependencia que valide roles según documento (admin, estándar).
+
+────────────────────────────────────────
+8) MIGRACIONES Y SEEDS
+────────────────────────────────────────
+ - Configurar Alembic.
+ - Crear migración inicial con todas las tablas del documento.
+ - Agregar script de semilla con: usuario admin, espacios y recursos de ejemplo.
+
+────────────────────────────────────────
+9) REEMPLAZO DE DOCKER
+────────────────────────────────────────
+NO generar Dockerfile.  
+En su lugar:
+
+• Asegurar que .replit incluya:
+run = "uvicorn app.main:app --host=0.0.0.0 --port=3000 --reload"
+
+• README debe incluir:
+  - cómo instalar dependencias,
+  - cómo configurar .env,
+  - cómo ejecutar alembic upgrade head,
+  - cómo correr el servidor en Replit.
+
+────────────────────────────────────────
+10) DOCUMENTACIÓN
+────────────────────────────────────────
+ - Habilitar /docs y /redoc.
+ - Incluir ejemplos JSON en todos los endpoints conforme al documento.
+ - Agregar descripción general del sistema como se explica en el documento.
+
+────────────────────────────────────────
+RESULTADO FINAL
+────────────────────────────────────────
+Genera un repositorio completamente funcional, ejecutable en Replit, con IA habilitada mediante Gemini, base de datos en MySQL según parámetros entregados, con la estructura, endpoints y modelos alineados al documento, y con las instrucciones claras en README para correr, probar y extender el sistema
