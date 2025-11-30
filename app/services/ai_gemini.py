@@ -4,8 +4,7 @@ import logging
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 
-from google import genai
-from google.genai import types
+import google.generativeai as genai
 from pydantic import BaseModel
 
 from app.config import settings
@@ -13,18 +12,22 @@ from app.config import settings
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-client = None
+# Configure Gemini once at module level
+if settings.GEMINI_API_KEY:
+    genai.configure(api_key=settings.GEMINI_API_KEY)
+else:
+    logger.warning("GEMINI_API_KEY not configured. AI features will be limited.")
 
 
-def get_gemini_client():
-    global client
-    if client is None:
-        api_key = settings.GEMINI_API_KEY
-        if api_key:
-            client = genai.Client(api_key=api_key)
-        else:
-            logger.warning("GEMINI_API_KEY not configured. AI features will be limited.")
-    return client
+def get_gemini_model(model_name: str = "gemini-2.0-flash-exp"):
+    """Get configured Gemini model instance."""
+    if not settings.GEMINI_API_KEY:
+        return None
+    try:
+        return genai.GenerativeModel(model_name)
+    except Exception as e:
+        logger.error(f"Error creating Gemini model: {e}")
+        return None
 
 
 class PredictionResponse(BaseModel):
@@ -46,9 +49,9 @@ class PatternAnalysisResponse(BaseModel):
 
 
 async def generate_predictions(data: Dict[str, Any]) -> Dict[str, Any]:
-    client = get_gemini_client()
+    model = get_gemini_model()
     
-    if not client:
+    if not model:
         return {
             "predictions": [],
             "confidence": 0.0,
@@ -80,17 +83,11 @@ Genera predicciones en formato JSON con la siguiente estructura:
 Responde SOLO con el JSON válido."""
 
     try:
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json"
-            )
-        )
+        response = model.generate_content(prompt)
         
         if response.text:
             result = json.loads(response.text)
-            result["model_used"] = "gemini-2.5-flash"
+            result["model_used"] = "gemini-2.0-flash-exp"
             result["generated_at"] = datetime.utcnow().isoformat()
             return result
         
@@ -98,7 +95,7 @@ Responde SOLO con el JSON válido."""
             "predictions": [],
             "confidence": 0.0,
             "message": "No response from AI model",
-            "model_used": "gemini-2.5-flash",
+            "model_used": "gemini-2.0-flash-exp",
             "generated_at": datetime.utcnow().isoformat()
         }
 
@@ -108,15 +105,15 @@ Responde SOLO con el JSON válido."""
             "predictions": [],
             "confidence": 0.0,
             "message": f"Error: {str(e)}",
-            "model_used": "gemini-2.5-flash",
+            "model_used": "gemini-2.0-flash-exp",
             "generated_at": datetime.utcnow().isoformat()
         }
 
 
 async def optimize_space_allocation(data: Dict[str, Any]) -> Dict[str, Any]:
-    client = get_gemini_client()
+    model = get_gemini_model()
     
-    if not client:
+    if not model:
         return {
             "recomendaciones": [],
             "score_optimizacion": 0.0,
@@ -153,13 +150,7 @@ Genera recomendaciones de optimización en formato JSON:
 Responde SOLO con el JSON válido."""
 
     try:
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json"
-            )
-        )
+        response = model.generate_content(prompt)
         
         if response.text:
             return json.loads(response.text)
@@ -182,9 +173,9 @@ Responde SOLO con el JSON válido."""
 
 
 async def analyze_usage_patterns(data: Dict[str, Any]) -> Dict[str, Any]:
-    client = get_gemini_client()
+    model = get_gemini_model()
     
-    if not client:
+    if not model:
         return {
             "patterns": [],
             "trends": [],
@@ -224,13 +215,7 @@ Identifica patrones, tendencias y anomalías. Responde en formato JSON:
 Responde SOLO con el JSON válido."""
 
     try:
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json"
-            )
-        )
+        response = model.generate_content(prompt)
         
         if response.text:
             return json.loads(response.text)
@@ -253,9 +238,9 @@ Responde SOLO con el JSON válido."""
 
 
 async def simulate_scenario(scenario: Dict[str, Any], current_data: Dict[str, Any]) -> Dict[str, Any]:
-    client = get_gemini_client()
+    model = get_gemini_model()
     
-    if not client:
+    if not model:
         return {
             "scenario_name": scenario.get("scenario_name", "Unknown"),
             "results": {},
@@ -296,13 +281,7 @@ Analiza el impacto y proporciona resultados en formato JSON:
 Responde SOLO con el JSON válido."""
 
     try:
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json"
-            )
-        )
+        response = model.generate_content(prompt)
         
         if response.text:
             result = json.loads(response.text)
@@ -326,3 +305,4 @@ Responde SOLO con el JSON válido."""
             "recommendations": [],
             "message": f"Error: {str(e)}"
         }
+
