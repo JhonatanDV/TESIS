@@ -140,6 +140,7 @@ async def get_efficiency_metrics(
     )
 
 
+@router.post("/predictions", response_model=PredictionResult, summary="Get usage predictions")
 @router.get("/predictions", response_model=PredictionResult, summary="Get usage predictions")
 async def get_predictions(
     days_ahead: int = Query(7, ge=1, le=90, description="Number of days to predict"),
@@ -152,6 +153,8 @@ async def get_predictions(
     Uses Gemini AI to analyze historical data and predict future usage patterns.
     
     - **days_ahead**: Number of days to predict (default: 7, max: 90)
+    
+    Accepts both GET and POST methods for compatibility.
     """
     start_date = datetime.utcnow() - timedelta(days=30)
     end_date = datetime.utcnow()
@@ -192,7 +195,7 @@ async def get_predictions(
     return PredictionResult(
         predictions=result.get("predictions", []),
         confidence=result.get("confidence", 0.0),
-        model_used=result.get("model_used", "gemini-2.5-flash"),
+        model_used=result.get("model_used", "gemini-2.0-flash"),
         generated_at=datetime.utcnow()
     )
 
@@ -201,12 +204,12 @@ async def get_predictions(
 async def run_simulation(
     request: SimulationRequest,
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_role(["admin"]))
+    current_user = Depends(require_role(["admin", "estudiante"]))
 ):
     """
     Run a simulation to analyze the impact of proposed changes.
     
-    Requires admin role.
+    Requires admin or estudiante role.
     
     - **scenario_name**: Name/description of the scenario
     - **parameters**: Scenario parameters (e.g., new spaces, resource changes)

@@ -13,9 +13,8 @@ from app.core.security import get_password_hash
 
 class UserCRUD:
     @staticmethod
-    async def create(db: AsyncSession, username: str, password: str, email: str = None, rol: str = "standard") -> User:
-        hashed_password = get_password_hash(password)
-        user = User(username=username, email=email, password_hash=hashed_password, rol=rol)
+    async def create(db: AsyncSession, user_data: dict) -> User:
+        user = User(**user_data)
         db.add(user)
         await db.flush()
         await db.refresh(user)
@@ -29,6 +28,11 @@ class UserCRUD:
     @staticmethod
     async def get_by_username(db: AsyncSession, username: str) -> Optional[User]:
         result = await db.execute(select(User).where(User.username == username))
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    async def get_by_email(db: AsyncSession, email: str) -> Optional[User]:
+        result = await db.execute(select(User).where(User.email == email))
         return result.scalar_one_or_none()
 
     @staticmethod
@@ -145,7 +149,7 @@ class AssignmentCRUD:
 
     @staticmethod
     async def update(db: AsyncSession, assignment_id: int, **kwargs) -> Optional[Assignment]:
-        kwargs['updated_at'] = datetime.utcnow()
+        # Remove updated_at since it doesn't exist in the table
         await db.execute(update(Assignment).where(Assignment.id == assignment_id).values(**kwargs))
         return await AssignmentCRUD.get_by_id(db, assignment_id)
 

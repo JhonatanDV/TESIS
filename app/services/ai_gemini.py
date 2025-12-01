@@ -19,7 +19,7 @@ else:
     logger.warning("GEMINI_API_KEY not configured. AI features will be limited.")
 
 
-def get_gemini_model(model_name: str = "gemini-2.0-flash-exp"):
+def get_gemini_model(model_name: str = "gemini-2.0-flash"):
     """Get configured Gemini model instance."""
     if not settings.GEMINI_API_KEY:
         return None
@@ -87,7 +87,7 @@ Responde SOLO con el JSON válido."""
         
         if response.text:
             result = json.loads(response.text)
-            result["model_used"] = "gemini-2.0-flash-exp"
+            result["model_used"] = "gemini-2.0-flash"
             result["generated_at"] = datetime.utcnow().isoformat()
             return result
         
@@ -95,7 +95,7 @@ Responde SOLO con el JSON válido."""
             "predictions": [],
             "confidence": 0.0,
             "message": "No response from AI model",
-            "model_used": "gemini-2.0-flash-exp",
+            "model_used": "gemini-2.0-flash",
             "generated_at": datetime.utcnow().isoformat()
         }
 
@@ -105,7 +105,7 @@ Responde SOLO con el JSON válido."""
             "predictions": [],
             "confidence": 0.0,
             "message": f"Error: {str(e)}",
-            "model_used": "gemini-2.0-flash-exp",
+            "model_used": "gemini-2.0-flash",
             "generated_at": datetime.utcnow().isoformat()
         }
 

@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 
 from app.config import settings
 from app.db.session import init_db
-from app.api.v1 import auth, spaces, resources, assignments, analytics, notifications
+from app.api.v1 import auth, spaces, resources, assignments, analytics, notifications, chatbot
 
 
 @asynccontextmanager
@@ -53,6 +53,7 @@ app.include_router(resources.router, prefix="/api/v1")
 app.include_router(assignments.router, prefix="/api/v1")
 app.include_router(analytics.router, prefix="/api/v1")
 app.include_router(notifications.router, prefix="/api/v1")
+app.include_router(chatbot.router, prefix="/api/v1")
 
 
 @app.get("/", tags=["Root"])
@@ -76,6 +77,7 @@ async def seed_initial_data():
     """Seed initial data if database is empty."""
     from app.db.session import AsyncSessionLocal
     from app.db.crud import UserCRUD, SpaceCRUD, ResourceCRUD, CategoryCRUD
+    from app.core.security import get_password_hash
     
     async with AsyncSessionLocal() as db:
         try:
@@ -85,18 +87,26 @@ async def seed_initial_data():
             
             admin = await UserCRUD.create(
                 db,
-                username="admin",
-                password="admin123",
-                email="admin@example.com",
-                rol="admin"
+                {
+                    "username": "admin",
+                    "password_hash": get_password_hash("admin123"),
+                    "email": "admin@example.com",
+                    "nombre_completo": "Administrator",
+                    "rol": "admin",
+                    "is_active": True
+                }
             )
             
             standard_user = await UserCRUD.create(
                 db,
-                username="usuario",
-                password="usuario123",
-                email="usuario@example.com",
-                rol="standard"
+                {
+                    "username": "usuario",
+                    "password_hash": get_password_hash("usuario123"),
+                    "email": "usuario@example.com",
+                    "nombre_completo": "Usuario Estándar",
+                    "rol": "estudiante",
+                    "is_active": True
+                }
             )
             
             cat_oficina = await CategoryCRUD.create(
@@ -120,41 +130,49 @@ async def seed_initial_data():
             space1 = await SpaceCRUD.create(
                 db,
                 nombre="Oficina Principal A",
-                tipo="oficina",
+                tipo="office",
                 capacidad=10,
                 ubicacion="Edificio A, Piso 1",
-                caracteristicas={"aire_acondicionado": True, "ventanas": 4},
-                estado="disponible"
+                descripcion="Oficina amplia con excelente iluminación natural y mobiliario moderno",
+                caracteristicas=["Aire Acondicionado", "4 Ventanas", "Conexión Fibra Óptica", "Mobiliario Moderno"],
+                estado="disponible",
+                imagen_url="https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=800"
             )
             
             space2 = await SpaceCRUD.create(
                 db,
                 nombre="Sala de Reuniones 101",
-                tipo="sala de reuniones",
+                tipo="conference",
                 capacidad=20,
                 ubicacion="Edificio A, Piso 1",
-                caracteristicas={"proyector": True, "videoconferencia": True},
-                estado="disponible"
+                descripcion="Sala de reuniones equipada con tecnología de videoconferencia de última generación",
+                caracteristicas=["Proyector HD", "Videoconferencia", "Pizarra Digital", "Mesa de Conferencias", "WiFi de Alta Velocidad"],
+                estado="disponible",
+                imagen_url="https://images.unsplash.com/photo-1497366811353-6870744d04b2?auto=format&fit=crop&w=800"
             )
             
             space3 = await SpaceCRUD.create(
                 db,
                 nombre="Laboratorio de Investigación",
-                tipo="laboratorio",
+                tipo="laboratory",
                 capacidad=8,
                 ubicacion="Edificio B, Piso 2",
-                caracteristicas={"bioseguridad": "nivel 2", "campana_extraccion": True},
-                estado="disponible"
+                descripcion="Laboratorio científico con bioseguridad nivel 2 y equipamiento especializado",
+                caracteristicas=["Bioseguridad Nivel 2", "Campana de Extracción", "Microscopios", "Equipos de Análisis", "Sistema de Ventilación"],
+                estado="disponible",
+                imagen_url="https://images.unsplash.com/photo-1581093458791-9d42e3f7e1f9?auto=format&fit=crop&w=800"
             )
             
             space4 = await SpaceCRUD.create(
                 db,
                 nombre="Auditorio Principal",
-                tipo="auditorio",
+                tipo="auditorium",
                 capacidad=100,
                 ubicacion="Edificio C, Planta Baja",
-                caracteristicas={"sistema_audio": True, "iluminacion_escenario": True},
-                estado="disponible"
+                descripcion="Auditorio moderno con excelente acústica y equipamiento profesional de audio e iluminación",
+                caracteristicas=["Sistema de Audio Profesional", "Iluminación de Escenario", "Proyector 4K", "Asientos Ergonómicos", "Accesibilidad Universal"],
+                estado="disponible",
+                imagen_url="https://images.unsplash.com/photo-1562564055-71e051d33c19?auto=format&fit=crop&w=800"
             )
             
             resource1 = await ResourceCRUD.create(

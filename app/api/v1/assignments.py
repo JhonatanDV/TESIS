@@ -166,12 +166,12 @@ async def optimize_assignments(
     request: OptimizationRequest,
     use_ai: bool = Query(False, description="Use AI (Gemini) for optimization"),
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(require_role(["admin"]))
+    current_user = Depends(require_role(["admin", "estudiante"]))
 ):
     """
     Run optimization algorithm to suggest optimal space-resource assignments.
     
-    Requires admin role.
+    Requires admin or estudiante role.
     
     - **space_ids**: List of space IDs to consider (optional, all if not provided)
     - **resource_ids**: List of resource IDs to consider (optional, all if not provided)
@@ -203,7 +203,7 @@ async def optimize_assignments(
                 "tipo": s.tipo,
                 "capacidad": s.capacidad,
                 "ubicacion": s.ubicacion,
-                "caracteristicas": s.caracteristicas or {},
+                "caracteristicas": s.caracteristicas if s.caracteristicas else [],
                 "estado": s.estado
             } for s in all_spaces
         ]
@@ -219,7 +219,7 @@ async def optimize_assignments(
                     "tipo": resource.tipo,
                     "estado": resource.estado,
                     "categoria_id": resource.categoria_id,
-                    "caracteristicas": resource.caracteristicas or {}
+                    "caracteristicas": resource.caracteristicas if resource.caracteristicas else {}
                 })
     else:
         all_resources = await ResourceCRUD.get_all(db)
@@ -238,7 +238,7 @@ async def optimize_assignments(
     existing_assignments = [
         {
             "id": a.id,
-            "space_id": a.space_id,
+            "room_id": a.room_id,
             "resource_id": a.resource_id,
             "estado": a.estado
         } for a in all_assignments

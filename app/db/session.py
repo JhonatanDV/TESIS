@@ -33,4 +33,5 @@ async def init_db():
     from app.db.base import Base
     from app.db import models
     async with engine.begin() as conn:
+        # Create all tables if they don't exist
         await conn.run_sync(Base.metadata.create_all)

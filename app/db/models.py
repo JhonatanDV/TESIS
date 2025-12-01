@@ -10,8 +10,9 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     username = Column(String(100), unique=True, index=True, nullable=False)
     email = Column(String(255), unique=True, index=True, nullable=True)
+    nombre_completo = Column(String(255), nullable=True)
     password_hash = Column(String(255), nullable=False)
-    rol = Column(String(50), default="standard", nullable=False)
+    rol = Column(String(50), default="estudiante", nullable=False)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
@@ -39,12 +40,13 @@ class Space(Base):
     tipo = Column(String(100), nullable=False)
     capacidad = Column(Integer, nullable=False)
     ubicacion = Column(String(255), nullable=True)
+    descripcion = Column(Text, nullable=True)
     caracteristicas = Column(JSON, nullable=True)
     estado = Column(String(50), default="disponible")
+    imagen_url = Column(String(500), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
-    assignments = relationship("Assignment", back_populates="space")
     usage_data = relationship("UsageData", back_populates="space")
 
 
@@ -69,16 +71,14 @@ class Assignment(Base):
     __tablename__ = "assignments"
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    space_id = Column(Integer, ForeignKey("spaces.id"), nullable=False)
+    room_id = Column(Integer, nullable=False)  # Referencias a rooms table
     resource_id = Column(Integer, ForeignKey("resources.id"), nullable=False)
     fecha = Column(DateTime(timezone=True), nullable=False)
     fecha_fin = Column(DateTime(timezone=True), nullable=True)
     estado = Column(String(50), default="activo")
     notas = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
-    space = relationship("Space", back_populates="assignments")
     resource = relationship("Resource", back_populates="assignments")
 
 

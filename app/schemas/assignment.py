@@ -4,7 +4,7 @@ from datetime import datetime
 
 
 class AssignmentBase(BaseModel):
-    space_id: int
+    room_id: int
     resource_id: int
     fecha: datetime
     fecha_fin: Optional[datetime] = None
@@ -17,7 +17,7 @@ class AssignmentCreate(AssignmentBase):
 
 
 class AssignmentUpdate(BaseModel):
-    space_id: Optional[int] = None
+    room_id: Optional[int] = None
     resource_id: Optional[int] = None
     fecha: Optional[datetime] = None
     fecha_fin: Optional[datetime] = None
@@ -28,7 +28,6 @@ class AssignmentUpdate(BaseModel):
 class AssignmentResponse(AssignmentBase):
     id: int
     created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -43,7 +42,15 @@ class OptimizationRequest(BaseModel):
 
 
 class OptimizationResult(BaseModel):
-    recomendaciones: List[Dict[str, Any]]
-    score_optimizacion: float
-    mensaje: str
+    # Spanish format (legacy)
+    recomendaciones: List[Dict[str, Any]] = []
+    score_optimizacion: float = 0.0
+    mensaje: str = ""
     asignaciones_sugeridas: Optional[List[Dict[str, Any]]] = None
+    
+    # English format (frontend expected)
+    recommendations: List[Dict[str, Any]] = []
+    estimated_improvement: float = 0.0
+    optimization_score: Optional[float] = None
+    model_used: str = "local-optimizer"
+    generated_at: Optional[str] = None

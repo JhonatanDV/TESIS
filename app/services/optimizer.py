@@ -44,7 +44,8 @@ class SpaceOptimizer:
         if capacity <= 0:
             return 0.0
         
-        resource_requirements = resource.get("caracteristicas", {}).get("space_required", 1)
+        # caracteristicas ahora es una lista, usar valor por defecto
+        resource_requirements = 1
         
         if resource_requirements <= capacity:
             efficiency = resource_requirements / capacity
@@ -56,10 +57,14 @@ class SpaceOptimizer:
         resource_type = resource.get("tipo", "").lower()
         
         compatibility_matrix = {
+            "office": ["computadora", "mobiliario", "equipo de oficina"],
             "oficina": ["computadora", "mobiliario", "equipo de oficina"],
+            "conference": ["proyector", "pizarra", "sistema de videoconferencia"],
             "sala de reuniones": ["proyector", "pizarra", "sistema de videoconferencia"],
+            "laboratory": ["equipo científico", "instrumentos", "computadora"],
             "laboratorio": ["equipo científico", "instrumentos", "computadora"],
-            "almacén": ["estantería", "equipo de carga", "mobiliario"],
+            "classroom": ["proyector", "computadora", "pizarra"],
+            "auditorium": ["sistema de audio", "proyector", "iluminación"],
             "auditorio": ["sistema de audio", "proyector", "iluminación"]
         }
         
@@ -73,7 +78,8 @@ class SpaceOptimizer:
 
     def _calculate_usage_score(self, space: Dict[str, Any], assignments: List[Dict[str, Any]]) -> float:
         space_id = space.get("id")
-        space_assignments = [a for a in assignments if a.get("space_id") == space_id]
+        # Assignments usan room_id, no space_id
+        space_assignments = [a for a in assignments if a.get("room_id") == space_id]
         
         if not space_assignments:
             return 1.0
@@ -100,11 +106,11 @@ class SpaceOptimizer:
         return 0.6
 
     def _calculate_cost_score(self, space: Dict[str, Any], resource: Dict[str, Any]) -> float:
-        space_cost = space.get("caracteristicas", {}).get("costo_hora", 10)
-        resource_value = resource.get("caracteristicas", {}).get("valor", 100)
+        # caracteristicas es ahora una lista, usar valores por defecto
+        space_cost = 10
+        resource_value = 100
         
-        if resource_value > 1000 and space_cost < 20:
-            return 0.5
+        # Asignar puntaje base
         return 0.8
 
     def optimize_assignments(
@@ -147,6 +153,9 @@ class SpaceOptimizer:
                 
                 if best_score > 0.8:
                     recommendations.append({
+                        "space_name": best_space['nombre'],
+                        "reason": f"Assign {resource['nombre']} - High compatibility score ({best_score:.2%})",
+                        "priority": "high",
                         "tipo": "asignación_óptima",
                         "descripcion": f"Asignar {resource['nombre']} a {best_space['nombre']}",
                         "prioridad": "alta",
@@ -154,6 +163,9 @@ class SpaceOptimizer:
                     })
                 elif best_score > 0.6:
                     recommendations.append({
+                        "space_name": best_space['nombre'],
+                        "reason": f"Consider assigning {resource['nombre']} - Good compatibility ({best_score:.2%})",
+                        "priority": "medium",
                         "tipo": "asignación_recomendada",
                         "descripcion": f"Considerar asignar {resource['nombre']} a {best_space['nombre']}",
                         "prioridad": "media",
@@ -163,6 +175,9 @@ class SpaceOptimizer:
         underutilized_spaces = self._find_underutilized_spaces(spaces, existing_assignments)
         for space in underutilized_spaces:
             recommendations.append({
+                "space_name": space['nombre'],
+                "reason": "Space is underutilized - potential cost savings",
+                "priority": "low",
                 "tipo": "consolidación",
                 "descripcion": f"Espacio {space['nombre']} está subutilizado",
                 "prioridad": "baja",
@@ -170,8 +185,14 @@ class SpaceOptimizer:
             })
         
         avg_score = total_score / len(suggested_assignments) if suggested_assignments else 0.0
+        estimated_improvement = avg_score * 100 if avg_score > 0 else 0.0
         
         return {
+            "recommendations": recommendations,
+            "estimated_improvement": round(estimated_improvement, 1),
+            "optimization_score": round(avg_score, 3),
+            "model_used": "local-optimizer",
+            "generated_at": datetime.utcnow().isoformat(),
             "recomendaciones": recommendations,
             "score_optimizacion": round(avg_score, 3),
             "mensaje": f"Se encontraron {len(suggested_assignments)} asignaciones óptimas de {len(available_resources)} recursos disponibles",

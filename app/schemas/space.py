@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Union
 from datetime import datetime
 
 
@@ -8,7 +8,9 @@ class SpaceBase(BaseModel):
     tipo: str
     capacidad: int
     ubicacion: Optional[str] = None
-    caracteristicas: Optional[Dict[str, Any]] = None
+    descripcion: Optional[str] = None
+    imagen_url: Optional[str] = None
+    caracteristicas: Optional[Union[Dict[str, Any], List[str]]] = None
     estado: str = "disponible"
 
 
@@ -21,7 +23,9 @@ class SpaceUpdate(BaseModel):
     tipo: Optional[str] = None
     capacidad: Optional[int] = None
     ubicacion: Optional[str] = None
-    caracteristicas: Optional[Dict[str, Any]] = None
+    descripcion: Optional[str] = None
+    imagen_url: Optional[str] = None
+    caracteristicas: Optional[Union[Dict[str, Any], List[str]]] = None
     estado: Optional[str] = None
 
 

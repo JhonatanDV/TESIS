@@ -13,9 +13,65 @@ from app.core.security import (
     oauth2_scheme
 )
 from app.schemas.auth import Token, RefreshRequest, LogoutResponse, LoginRequest
-from app.schemas.user import UserResponse
+from app.schemas.user import UserResponse, UserCreate
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
+
+
+@router.post("/register", response_model=Token, summary="Register new user", status_code=201)
+async def register(
+    user_data: UserCreate,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Register a new user account.
+    
+    - **username**: Unique username
+    - **email**: User's email address
+    - **password**: User's password (will be hashed)
+    - **nombre_completo**: User's full name
+    - **rol**: User role (admin, docente, estudiante)
+    
+    Returns access_token and refresh_token for authenticated sessions.
+    """
+    from app.core.security import get_password_hash
+    
+    # Check if username already exists
+    existing_user = await UserCRUD.get_by_username(db, user_data.username)
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Username already registered"
+        )
+    
+    # Check if email already exists
+    existing_email = await UserCRUD.get_by_email(db, user_data.email)
+    if existing_email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email already registered"
+        )
+    
+    # Create new user
+    user_dict = user_data.model_dump()
+    user_dict['password_hash'] = get_password_hash(user_dict.pop('password'))
+    user_dict['is_active'] = True
+    
+    new_user = await UserCRUD.create(db, user_dict)
+    
+    # Generate tokens
+    access_token = create_access_token(
+        data={"sub": new_user.username, "user_id": new_user.id, "rol": new_user.rol}
+    )
+    refresh_token = create_refresh_token(
+        data={"sub": new_user.username, "user_id": new_user.id}
+    )
+    
+    return Token(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        token_type="bearer"
+    )
 
 
 @router.post("/login", response_model=Token, summary="User login")
@@ -144,6 +200,16 @@ async def get_current_active_user(current_user = Depends(get_current_user)):
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Inactive user"
         )
+    return current_user
+
+
+@router.get("/me", response_model=UserResponse, summary="Get current user profile")
+async def get_me(current_user = Depends(get_current_active_user)):
+    """
+    Get current authenticated user profile.
+    
+    Returns the profile information of the currently authenticated user.
+    """
     return current_user
 
 
