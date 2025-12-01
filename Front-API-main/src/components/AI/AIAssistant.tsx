@@ -3,7 +3,23 @@ import { useAI } from '../../context/AIContext';
 import { useSpaces } from '../../context/SpaceContext';
 import Button from '../common/Button';
 import SpaceLayoutVisualization from './SpaceLayoutVisualization';
-import { Search, Lightbulb, BarChart2, Loader2, Filter, ChevronLeft, ChevronRight, Calendar, MapPin, Users, CheckCircle, Building2, Settings, X, Wand2, Sparkles, Clock, AlertCircle, Ruler, Car, Monitor, Layout, Plus, Trash2 } from 'lucide-react';
+import { Search, Lightbulb, BarChart2, Loader2, Filter, ChevronLeft, ChevronRight, Calendar, MapPin, Users, CheckCircle, Building2, Settings, X, Wand2, Sparkles, Clock, AlertCircle, Ruler, Car, Monitor, Layout, Plus, Trash2, BookOpen, GraduationCap, CalendarDays } from 'lucide-react';
+
+// Interfaz para una materia/clase
+interface MateriaClase {
+  id: string;
+  nombreMateria: string;
+  semestre: string;
+  programa: string;
+  docente: string;
+  numeroEstudiantes: number;
+  horasSemanales: number;
+  tipoEspacio: string;
+  equipamientoRequerido: string[];
+  diasPreferidos: string[];
+  horaInicioPreferida: string;
+  horaFinPreferida: string;
+}
 
 // Lista de características/equipos disponibles para las aulas
 const AVAILABLE_FEATURES = [
@@ -57,7 +73,7 @@ const AIAssistant: React.FC = () => {
   const [analysis, setAnalysis] = useState<string | null>(null);
   const [selectedSpace, setSelectedSpace] = useState<any>(null);
   const [suggestions, setSuggestions] = useState<string[] | null>(null);
-  const [activeTab, setActiveTab] = useState<'recommend' | 'analyze' | 'optimize' | 'smart' | 'layout'>('recommend');
+  const [activeTab, setActiveTab] = useState<'recommend' | 'analyze' | 'optimize' | 'smart' | 'layout' | 'scheduler'>('recommend');
   
   // Search filters
   const [filters, setFilters] = useState({
@@ -133,6 +149,52 @@ const AIAssistant: React.FC = () => {
   const [layoutLoading, setLayoutLoading] = useState(false);
   const [layoutError, setLayoutError] = useState<string | null>(null);
 
+  // ============================================
+  // SCHEDULER - Programador de Clases Múltiples
+  // ============================================
+  const [materias, setMaterias] = useState<MateriaClase[]>([]);
+  const [schedulerPeriodo, setSchedulerPeriodo] = useState('2024-1'); // Semestre académico
+  const [schedulerFechaInicio, setSchedulerFechaInicio] = useState('');
+  const [schedulerFechaFin, setSchedulerFechaFin] = useState('');
+  const [schedulerResult, setSchedulerResult] = useState<any>(null);
+  const [schedulerLoading, setSchedulerLoading] = useState(false);
+  const [schedulerError, setSchedulerError] = useState<string | null>(null);
+  const [showAddMateria, setShowAddMateria] = useState(false);
+  const [editingMateria, setEditingMateria] = useState<MateriaClase | null>(null);
+  
+  // Estado para nueva materia
+  const [nuevaMateria, setNuevaMateria] = useState<MateriaClase>({
+    id: '',
+    nombreMateria: '',
+    semestre: '1',
+    programa: '',
+    docente: '',
+    numeroEstudiantes: 20,
+    horasSemanales: 4,
+    tipoEspacio: 'aula',
+    equipamientoRequerido: [],
+    diasPreferidos: ['monday', 'wednesday', 'friday'],
+    horaInicioPreferida: '07:00',
+    horaFinPreferida: '19:00',
+  });
+
+  // Semestres disponibles
+  const SEMESTRES = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'];
+  
+  // Programas académicos de ejemplo
+  const PROGRAMAS = [
+    'Ingeniería de Sistemas',
+    'Ingeniería Civil', 
+    'Administración de Empresas',
+    'Contaduría Pública',
+    'Derecho',
+    'Psicología',
+    'Medicina',
+    'Enfermería',
+    'Arquitectura',
+    'Comunicación Social',
+  ];
+
   // Elementos disponibles para agregar según tipo de espacio
   const elementosDisponibles: Record<string, Array<{id: string, nombre: string, area: number}>> = {
     aula: [
@@ -152,9 +214,9 @@ const AIAssistant: React.FC = () => {
       { id: 'proyector', nombre: 'Proyector', area: 1.0 },
     ],
     parqueadero: [
-      { id: 'vehiculo', nombre: 'Espacio vehículo', area: 12.5 },
-      { id: 'motocicleta', nombre: 'Espacio motocicleta', area: 2.5 },
-      { id: 'vehiculo_discapacitado', nombre: 'Espacio discapacitado', area: 18.0 },
+      { id: 'vehiculo', nombre: 'Espacio vehículo', area: 11.25 },  // 2.5m x 4.5m
+      { id: 'motocicleta', nombre: 'Espacio motocicleta', area: 1.4 },  // ~0.7m x 2m
+      { id: 'vehiculo_discapacitado', nombre: 'Espacio discapacitado', area: 15.75 },  // 3.5m x 4.5m
     ],
     auditorio: [
       { id: 'butacas', nombre: 'Butaca/Asiento', area: 0.8 },
@@ -537,6 +599,160 @@ const AIAssistant: React.FC = () => {
     setLayoutError(null);
   };
 
+  // ============================================
+  // FUNCIONES DEL SCHEDULER
+  // ============================================
+  
+  const resetNuevaMateria = () => {
+    setNuevaMateria({
+      id: '',
+      nombreMateria: '',
+      semestre: '1',
+      programa: '',
+      docente: '',
+      numeroEstudiantes: 20,
+      horasSemanales: 4,
+      tipoEspacio: 'aula',
+      equipamientoRequerido: [],
+      diasPreferidos: ['monday', 'wednesday', 'friday'],
+      horaInicioPreferida: '07:00',
+      horaFinPreferida: '19:00',
+    });
+  };
+
+  const agregarMateria = () => {
+    if (!nuevaMateria.nombreMateria.trim() || !nuevaMateria.programa.trim()) {
+      setSchedulerError('Por favor ingresa el nombre de la materia y el programa');
+      return;
+    }
+
+    const materia: MateriaClase = {
+      ...nuevaMateria,
+      id: `mat_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    };
+
+    setMaterias(prev => [...prev, materia]);
+    resetNuevaMateria();
+    setShowAddMateria(false);
+    setSchedulerError(null);
+  };
+
+  const editarMateria = (materia: MateriaClase) => {
+    setEditingMateria(materia);
+    setNuevaMateria({ ...materia });
+    setShowAddMateria(true);
+  };
+
+  const guardarEdicionMateria = () => {
+    if (!nuevaMateria.nombreMateria.trim() || !nuevaMateria.programa.trim()) {
+      setSchedulerError('Por favor ingresa el nombre de la materia y el programa');
+      return;
+    }
+
+    setMaterias(prev => prev.map(m => 
+      m.id === editingMateria?.id ? { ...nuevaMateria, id: m.id } : m
+    ));
+    resetNuevaMateria();
+    setEditingMateria(null);
+    setShowAddMateria(false);
+    setSchedulerError(null);
+  };
+
+  const eliminarMateria = (id: string) => {
+    setMaterias(prev => prev.filter(m => m.id !== id));
+  };
+
+  const toggleDiaPreferido = (dia: string) => {
+    setNuevaMateria(prev => ({
+      ...prev,
+      diasPreferidos: prev.diasPreferidos.includes(dia)
+        ? prev.diasPreferidos.filter(d => d !== dia)
+        : [...prev.diasPreferidos, dia]
+    }));
+  };
+
+  const toggleEquipamientoMateria = (equipo: string) => {
+    setNuevaMateria(prev => ({
+      ...prev,
+      equipamientoRequerido: prev.equipamientoRequerido.includes(equipo)
+        ? prev.equipamientoRequerido.filter(e => e !== equipo)
+        : [...prev.equipamientoRequerido, equipo]
+    }));
+  };
+
+  const handleSchedulerGenerate = async () => {
+    if (materias.length === 0) {
+      setSchedulerError('Por favor agrega al menos una materia para generar el horario');
+      return;
+    }
+
+    if (!schedulerFechaInicio || !schedulerFechaFin) {
+      setSchedulerError('Por favor selecciona las fechas de inicio y fin del periodo');
+      return;
+    }
+
+    setSchedulerLoading(true);
+    setSchedulerError(null);
+    setSchedulerResult(null);
+
+    try {
+      const token = localStorage.getItem('access_token');
+      
+      const requestBody = {
+        periodo_academico: schedulerPeriodo,
+        fecha_inicio: schedulerFechaInicio,
+        fecha_fin: schedulerFechaFin,
+        materias: materias.map(m => ({
+          nombre_materia: m.nombreMateria,
+          semestre: m.semestre,
+          programa: m.programa,
+          docente: m.docente,
+          numero_estudiantes: m.numeroEstudiantes,
+          horas_semanales: m.horasSemanales,
+          tipo_espacio: m.tipoEspacio,
+          equipamiento_requerido: m.equipamientoRequerido,
+          dias_preferidos: m.diasPreferidos,
+          hora_inicio_preferida: m.horaInicioPreferida,
+          hora_fin_preferida: m.horaFinPreferida,
+        })),
+        evitar_cruces: true,
+        optimizar_uso_espacios: true,
+      };
+
+      const response = await fetch('http://localhost:8000/api/v1/chatbot/generate-schedule', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || 'Error al generar el horario');
+      }
+
+      setSchedulerResult(data);
+    } catch (error: any) {
+      console.error('Error en generación de horario:', error);
+      setSchedulerError(error.message || 'Error al conectar con el servidor');
+    } finally {
+      setSchedulerLoading(false);
+    }
+  };
+
+  const clearScheduler = () => {
+    setMaterias([]);
+    setSchedulerPeriodo('2024-1');
+    setSchedulerFechaInicio('');
+    setSchedulerFechaFin('');
+    setSchedulerResult(null);
+    setSchedulerError(null);
+    resetNuevaMateria();
+  };
+
   const calcularAreaEstimada = () => {
     let areaTotal = 0;
     const elementos = elementosDisponibles[layoutSpaceType] || [];
@@ -552,11 +768,11 @@ const AIAssistant: React.FC = () => {
       areaTotal += 8; // Espacio instructor
     }
 
-    // Para parqueaderos
+    // Para parqueaderos (dimensiones reales)
     if (layoutSpaceType === 'parqueadero') {
-      if (layoutVehiculos) areaTotal += parseInt(layoutVehiculos) * 12.5;
-      if (layoutMotos) areaTotal += parseInt(layoutMotos) * 2.5;
-      if (layoutDiscapacitados) areaTotal += parseInt(layoutDiscapacitados) * 18;
+      if (layoutVehiculos) areaTotal += parseInt(layoutVehiculos) * 11.25;  // 2.5m x 4.5m
+      if (layoutMotos) areaTotal += parseInt(layoutMotos) * 1.4;  // ~0.7m x 2m = 1.4m²
+      if (layoutDiscapacitados) areaTotal += parseInt(layoutDiscapacitados) * 15.75;  // 3.5m x 4.5m
     }
 
     return areaTotal;
@@ -655,6 +871,21 @@ const AIAssistant: React.FC = () => {
               <Layout className="h-4 w-4 mr-2" />
               <Ruler className="h-3 w-3 mr-1 text-emerald-500" />
               Diseño Espacio
+            </div>
+          </button>
+          
+          <button
+            onClick={() => setActiveTab('scheduler')}
+            className={`px-4 py-2 font-medium text-sm -mb-px ${
+              activeTab === 'scheduler'
+                ? 'text-indigo-600 border-b-2 border-indigo-600 dark:text-indigo-400 dark:border-indigo-400'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+            }`}
+          >
+            <div className="flex items-center">
+              <CalendarDays className="h-4 w-4 mr-2" />
+              <GraduationCap className="h-3 w-3 mr-1 text-indigo-500" />
+              Horarios IA
             </div>
           </button>
         </div>
@@ -1647,7 +1878,7 @@ const AIAssistant: React.FC = () => {
                           min="0"
                           className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:bg-slate-700 dark:border-slate-600 dark:text-white"
                         />
-                        <span className="text-xs text-slate-500">12.5 m² c/u</span>
+                        <span className="text-xs text-slate-500">11.25 m² c/u (2.5m × 4.5m)</span>
                       </div>
 
                       <div>
@@ -1662,7 +1893,7 @@ const AIAssistant: React.FC = () => {
                           min="0"
                           className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:bg-slate-700 dark:border-slate-600 dark:text-white"
                         />
-                        <span className="text-xs text-slate-500">2.5 m² c/u</span>
+                        <span className="text-xs text-slate-500">1.4 m² c/u (0.7m × 2m)</span>
                       </div>
 
                       <div>
@@ -1677,7 +1908,7 @@ const AIAssistant: React.FC = () => {
                           min="0"
                           className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 dark:bg-slate-700 dark:border-slate-600 dark:text-white"
                         />
-                        <span className="text-xs text-slate-500">18 m² c/u</span>
+                        <span className="text-xs text-slate-500">15.75 m² c/u (3.5m × 4.5m)</span>
                       </div>
                     </div>
                   </div>
@@ -1970,16 +2201,16 @@ const AIAssistant: React.FC = () => {
                 {layoutResult && (
                   <SpaceLayoutVisualization
                     layoutData={{
-                      largo: layoutResult.dimensiones?.largo || parseFloat(layoutLargo) || 10,
-                      ancho: layoutResult.dimensiones?.ancho || parseFloat(layoutAncho) || 8,
+                      largo: layoutResult.dimensiones?.largo || layoutResult.dimensiones_sugeridas?.largo_optimo || parseFloat(layoutLargo) || 10,
+                      ancho: layoutResult.dimensiones?.ancho || layoutResult.dimensiones_sugeridas?.ancho_optimo || parseFloat(layoutAncho) || 8,
                       tipoEspacio: layoutSpaceType,
-                      elementos: layoutResult.distribucion_elementos?.map((elem: any) => ({
+                      elementos: (layoutResult.distribucion_elementos || layoutResult.distribucion_optima || []).map((elem: any) => ({
                         tipo: elem.elemento || elem.tipo,
                         cantidad: elem.cantidad,
                         filas: elem.filas,
                         columnas: elem.columnas,
                         areaTotal: elem.area_total
-                      })) || [],
+                      })),
                       incluyeInstructor: layoutIncluirInstructor,
                       anchoPasillo: parseFloat(layoutAnchoPasillo) || 1.2,
                       ventanas: layoutVentanas,
@@ -2068,6 +2299,527 @@ const AIAssistant: React.FC = () => {
                 </p>
               </div>
             )}
+          </div>
+        )}
+
+        {/* ============================================ */}
+        {/* SCHEDULER TAB - Programador de Horarios IA */}
+        {/* ============================================ */}
+        {activeTab === 'scheduler' && (
+          <div className="space-y-6">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-indigo-500 to-purple-600 rounded-lg p-6 text-white">
+              <div className="flex items-center gap-3 mb-2">
+                <CalendarDays className="h-8 w-8" />
+                <GraduationCap className="h-6 w-6 text-yellow-300" />
+                <h3 className="text-xl font-bold">Programador de Horarios con IA</h3>
+              </div>
+              <p className="text-indigo-100">
+                Agrega múltiples materias de diferentes semestres y la IA generará automáticamente los horarios evitando cruces y optimizando el uso de espacios.
+              </p>
+            </div>
+
+            {/* Periodo Académico */}
+            <div className="bg-slate-50 dark:bg-slate-700/50 rounded-lg p-4">
+              <h4 className="font-semibold text-slate-800 dark:text-white mb-4 flex items-center gap-2">
+                <Calendar className="h-5 w-5 text-indigo-500" />
+                Configuración del Periodo
+              </h4>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                    Periodo Académico
+                  </label>
+                  <select
+                    value={schedulerPeriodo}
+                    onChange={(e) => setSchedulerPeriodo(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-slate-700 dark:border-slate-600 dark:text-white"
+                  >
+                    <option value="2024-1">2024 - Primer Semestre</option>
+                    <option value="2024-2">2024 - Segundo Semestre</option>
+                    <option value="2025-1">2025 - Primer Semestre</option>
+                    <option value="2025-2">2025 - Segundo Semestre</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                    Fecha Inicio
+                  </label>
+                  <input
+                    type="date"
+                    value={schedulerFechaInicio}
+                    onChange={(e) => setSchedulerFechaInicio(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-slate-700 dark:border-slate-600 dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                    Fecha Fin
+                  </label>
+                  <input
+                    type="date"
+                    value={schedulerFechaFin}
+                    onChange={(e) => setSchedulerFechaFin(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-slate-700 dark:border-slate-600 dark:text-white"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Lista de Materias Agregadas */}
+            <div className="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
+              <div className="p-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
+                <h4 className="font-semibold text-slate-800 dark:text-white flex items-center gap-2">
+                  <BookOpen className="h-5 w-5 text-indigo-500" />
+                  Materias a Programar ({materias.length})
+                </h4>
+                <Button
+                  onClick={() => { resetNuevaMateria(); setEditingMateria(null); setShowAddMateria(true); }}
+                  className="bg-indigo-500 hover:bg-indigo-600"
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  Agregar Materia
+                </Button>
+              </div>
+              
+              {materias.length === 0 ? (
+                <div className="p-8 text-center text-slate-500 dark:text-slate-400">
+                  <BookOpen className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                  <p>No hay materias agregadas</p>
+                  <p className="text-sm">Haz clic en "Agregar Materia" para comenzar</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-200 dark:divide-slate-700 max-h-96 overflow-y-auto">
+                  {materias.map((materia) => (
+                    <div key={materia.id} className="p-4 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors">
+                      <div className="flex justify-between items-start">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="font-semibold text-slate-800 dark:text-white">
+                              {materia.nombreMateria}
+                            </span>
+                            <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-xs rounded-full dark:bg-indigo-900/50 dark:text-indigo-300">
+                              Semestre {materia.semestre}
+                            </span>
+                          </div>
+                          <p className="text-sm text-slate-600 dark:text-slate-400">
+                            {materia.programa} • {materia.docente || 'Docente por asignar'}
+                          </p>
+                          <div className="flex flex-wrap gap-2 mt-2">
+                            <span className="text-xs bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded">
+                              <Users className="h-3 w-3 inline mr-1" />
+                              {materia.numeroEstudiantes} estudiantes
+                            </span>
+                            <span className="text-xs bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded">
+                              <Clock className="h-3 w-3 inline mr-1" />
+                              {materia.horasSemanales} hrs/semana
+                            </span>
+                            <span className="text-xs bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded">
+                              <Building2 className="h-3 w-3 inline mr-1" />
+                              {materia.tipoEspacio}
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap gap-1 mt-2">
+                            {materia.diasPreferidos.map(dia => (
+                              <span key={dia} className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded dark:bg-blue-900/50 dark:text-blue-300">
+                                {DAYS_OF_WEEK.find(d => d.id === dia)?.short || dia}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                        <div className="flex gap-2 ml-4">
+                          <button
+                            onClick={() => editarMateria(materia)}
+                            className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors dark:hover:bg-indigo-900/30"
+                          >
+                            <Settings className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => eliminarMateria(materia.id)}
+                            className="p-2 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors dark:hover:bg-red-900/30"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Botones de Acción */}
+            <div className="flex gap-3 justify-center">
+              <Button
+                variant="secondary"
+                onClick={clearScheduler}
+                disabled={schedulerLoading}
+              >
+                Limpiar Todo
+              </Button>
+              <Button
+                onClick={handleSchedulerGenerate}
+                disabled={schedulerLoading || materias.length === 0}
+                loading={schedulerLoading}
+                className="bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700"
+              >
+                <Wand2 className="h-4 w-4 mr-2" />
+                {schedulerLoading ? 'Generando Horarios...' : 'Generar Horarios con IA'}
+              </Button>
+            </div>
+
+            {/* Error Message */}
+            {schedulerError && (
+              <div className="bg-red-50 border border-red-200 rounded-lg p-4 dark:bg-red-900/20 dark:border-red-800">
+                <div className="flex items-center gap-2 text-red-700 dark:text-red-400">
+                  <AlertCircle className="h-5 w-5" />
+                  <span className="font-medium">Error</span>
+                </div>
+                <p className="text-red-600 dark:text-red-300 mt-1">{schedulerError}</p>
+              </div>
+            )}
+
+            {/* Resultados del Scheduler */}
+            {schedulerResult && (
+              <div className="space-y-4 border-t border-slate-200 dark:border-slate-700 pt-6">
+                {/* Success Header */}
+                <div className={`rounded-lg p-5 ${
+                  schedulerResult.success 
+                    ? 'bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 dark:from-green-900/20 dark:to-emerald-900/20 dark:border-green-800'
+                    : 'bg-gradient-to-r from-yellow-50 to-orange-50 border border-yellow-200 dark:from-yellow-900/20 dark:to-orange-900/20 dark:border-yellow-800'
+                }`}>
+                  <div className="flex items-center gap-3">
+                    {schedulerResult.success ? (
+                      <CheckCircle className="h-8 w-8 text-green-500" />
+                    ) : (
+                      <AlertCircle className="h-8 w-8 text-yellow-500" />
+                    )}
+                    <div>
+                      <h3 className="text-lg font-bold text-slate-800 dark:text-white">
+                        {schedulerResult.success ? '✓ Horarios Generados Exitosamente' : 'Horario Parcial'}
+                      </h3>
+                      <p className="text-sm text-slate-600 dark:text-slate-400">
+                        {schedulerResult.message || `Se programaron ${schedulerResult.horarios?.length || 0} clases`}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Horarios Generados */}
+                {schedulerResult.horarios && schedulerResult.horarios.length > 0 && (
+                  <div className="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
+                    <div className="p-4 bg-slate-50 dark:bg-slate-700/50 border-b border-slate-200 dark:border-slate-700">
+                      <h4 className="font-semibold text-slate-800 dark:text-white flex items-center gap-2">
+                        <CalendarDays className="h-5 w-5 text-indigo-500" />
+                        Horarios Asignados
+                      </h4>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead className="bg-slate-50 dark:bg-slate-700/50">
+                          <tr>
+                            <th className="px-4 py-3 text-left font-medium text-slate-600 dark:text-slate-300">Materia</th>
+                            <th className="px-4 py-3 text-left font-medium text-slate-600 dark:text-slate-300">Semestre</th>
+                            <th className="px-4 py-3 text-left font-medium text-slate-600 dark:text-slate-300">Día</th>
+                            <th className="px-4 py-3 text-left font-medium text-slate-600 dark:text-slate-300">Horario</th>
+                            <th className="px-4 py-3 text-left font-medium text-slate-600 dark:text-slate-300">Espacio</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
+                          {schedulerResult.horarios.map((horario: any, idx: number) => (
+                            <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-700/30">
+                              <td className="px-4 py-3 font-medium text-slate-800 dark:text-white">
+                                {horario.materia}
+                              </td>
+                              <td className="px-4 py-3">
+                                <span className="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-xs rounded-full dark:bg-indigo-900/50 dark:text-indigo-300">
+                                  {horario.semestre}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 text-slate-600 dark:text-slate-400">
+                                {horario.dia}
+                              </td>
+                              <td className="px-4 py-3 text-slate-600 dark:text-slate-400">
+                                {horario.hora_inicio} - {horario.hora_fin}
+                              </td>
+                              <td className="px-4 py-3">
+                                <div className="flex items-center gap-1">
+                                  <Building2 className="h-4 w-4 text-slate-400" />
+                                  <span className="text-slate-800 dark:text-white">{horario.espacio}</span>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {/* Conflictos Detectados */}
+                {schedulerResult.conflictos && schedulerResult.conflictos.length > 0 && (
+                  <div className="bg-yellow-50 dark:bg-yellow-900/20 rounded-lg p-4 border border-yellow-200 dark:border-yellow-800">
+                    <h4 className="font-semibold text-yellow-800 dark:text-yellow-300 mb-3 flex items-center gap-2">
+                      ⚠️ Conflictos Detectados y Resueltos
+                    </h4>
+                    <ul className="space-y-2">
+                      {schedulerResult.conflictos.map((conflicto: string, idx: number) => (
+                        <li key={idx} className="text-sm text-yellow-700 dark:text-yellow-400 flex items-start gap-2">
+                          <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                          {conflicto}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Estadísticas */}
+                {schedulerResult.estadisticas && (
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="bg-slate-50 dark:bg-slate-700/50 rounded-lg p-4 text-center">
+                      <span className="block text-2xl font-bold text-indigo-600 dark:text-indigo-400">
+                        {schedulerResult.estadisticas.total_clases || 0}
+                      </span>
+                      <span className="text-xs text-slate-500">Clases Programadas</span>
+                    </div>
+                    <div className="bg-slate-50 dark:bg-slate-700/50 rounded-lg p-4 text-center">
+                      <span className="block text-2xl font-bold text-green-600 dark:text-green-400">
+                        {schedulerResult.estadisticas.espacios_utilizados || 0}
+                      </span>
+                      <span className="text-xs text-slate-500">Espacios Utilizados</span>
+                    </div>
+                    <div className="bg-slate-50 dark:bg-slate-700/50 rounded-lg p-4 text-center">
+                      <span className="block text-2xl font-bold text-purple-600 dark:text-purple-400">
+                        {schedulerResult.estadisticas.horas_totales || 0}
+                      </span>
+                      <span className="text-xs text-slate-500">Horas Semanales</span>
+                    </div>
+                    <div className="bg-slate-50 dark:bg-slate-700/50 rounded-lg p-4 text-center">
+                      <span className="block text-2xl font-bold text-blue-600 dark:text-blue-400">
+                        {schedulerResult.estadisticas.eficiencia || 0}%
+                      </span>
+                      <span className="text-xs text-slate-500">Eficiencia</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Modal Agregar/Editar Materia */}
+        {showAddMateria && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white dark:bg-slate-800 rounded-lg p-6 max-w-2xl w-full mx-4 shadow-xl max-h-[90vh] overflow-y-auto">
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-lg font-semibold text-slate-800 dark:text-white flex items-center gap-2">
+                  <BookOpen className="h-5 w-5 text-indigo-500" />
+                  {editingMateria ? 'Editar Materia' : 'Agregar Nueva Materia'}
+                </h3>
+                <button
+                  onClick={() => { setShowAddMateria(false); setEditingMateria(null); resetNuevaMateria(); }}
+                  className="p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                {/* Nombre y Programa */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                      Nombre de la Materia *
+                    </label>
+                    <input
+                      type="text"
+                      value={nuevaMateria.nombreMateria}
+                      onChange={(e) => setNuevaMateria(prev => ({ ...prev, nombreMateria: e.target.value }))}
+                      placeholder="Ej: Cálculo Diferencial"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-slate-700 dark:border-slate-600 dark:text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                      Programa Académico *
+                    </label>
+                    <select
+                      value={nuevaMateria.programa}
+                      onChange={(e) => setNuevaMateria(prev => ({ ...prev, programa: e.target.value }))}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-slate-700 dark:border-slate-600 dark:text-white"
+                    >
+                      <option value="">Seleccionar programa...</option>
+                      {PROGRAMAS.map(prog => (
+                        <option key={prog} value={prog}>{prog}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Semestre y Docente */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                      Semestre
+                    </label>
+                    <select
+                      value={nuevaMateria.semestre}
+                      onChange={(e) => setNuevaMateria(prev => ({ ...prev, semestre: e.target.value }))}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-slate-700 dark:border-slate-600 dark:text-white"
+                    >
+                      {SEMESTRES.map(sem => (
+                        <option key={sem} value={sem}>Semestre {sem}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                      Docente (opcional)
+                    </label>
+                    <input
+                      type="text"
+                      value={nuevaMateria.docente}
+                      onChange={(e) => setNuevaMateria(prev => ({ ...prev, docente: e.target.value }))}
+                      placeholder="Nombre del docente"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-slate-700 dark:border-slate-600 dark:text-white"
+                    />
+                  </div>
+                </div>
+
+                {/* Estudiantes y Horas */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                      <Users className="h-4 w-4 inline mr-1" />
+                      Nº Estudiantes
+                    </label>
+                    <input
+                      type="number"
+                      value={nuevaMateria.numeroEstudiantes}
+                      onChange={(e) => setNuevaMateria(prev => ({ ...prev, numeroEstudiantes: parseInt(e.target.value) || 0 }))}
+                      min="1"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-slate-700 dark:border-slate-600 dark:text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                      <Clock className="h-4 w-4 inline mr-1" />
+                      Horas/Semana
+                    </label>
+                    <input
+                      type="number"
+                      value={nuevaMateria.horasSemanales}
+                      onChange={(e) => setNuevaMateria(prev => ({ ...prev, horasSemanales: parseInt(e.target.value) || 0 }))}
+                      min="1"
+                      max="20"
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-slate-700 dark:border-slate-600 dark:text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                      <Building2 className="h-4 w-4 inline mr-1" />
+                      Tipo Espacio
+                    </label>
+                    <select
+                      value={nuevaMateria.tipoEspacio}
+                      onChange={(e) => setNuevaMateria(prev => ({ ...prev, tipoEspacio: e.target.value }))}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-slate-700 dark:border-slate-600 dark:text-white"
+                    >
+                      <option value="aula">Aula</option>
+                      <option value="laboratorio">Laboratorio</option>
+                      <option value="auditorio">Auditorio</option>
+                      <option value="sala">Sala de Reuniones</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Días Preferidos */}
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    Días Preferidos
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {DAYS_OF_WEEK.map(dia => (
+                      <button
+                        key={dia.id}
+                        onClick={() => toggleDiaPreferido(dia.id)}
+                        className={`px-3 py-1.5 text-sm rounded-lg transition-colors ${
+                          nuevaMateria.diasPreferidos.includes(dia.id)
+                            ? 'bg-indigo-500 text-white'
+                            : 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-300'
+                        }`}
+                      >
+                        {dia.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Horario Preferido */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                      Hora Inicio Preferida
+                    </label>
+                    <input
+                      type="time"
+                      value={nuevaMateria.horaInicioPreferida}
+                      onChange={(e) => setNuevaMateria(prev => ({ ...prev, horaInicioPreferida: e.target.value }))}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-slate-700 dark:border-slate-600 dark:text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                      Hora Fin Preferida
+                    </label>
+                    <input
+                      type="time"
+                      value={nuevaMateria.horaFinPreferida}
+                      onChange={(e) => setNuevaMateria(prev => ({ ...prev, horaFinPreferida: e.target.value }))}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:bg-slate-700 dark:border-slate-600 dark:text-white"
+                    />
+                  </div>
+                </div>
+
+                {/* Equipamiento */}
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    Equipamiento Requerido
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {['Video Beam', 'Pizarra Blanca', 'Ordenador', 'Aire Acondicionado', 'Sonido', 'Laboratorio Informática'].map(equipo => (
+                      <button
+                        key={equipo}
+                        onClick={() => toggleEquipamientoMateria(equipo)}
+                        className={`px-3 py-1.5 text-sm rounded-full transition-colors ${
+                          nuevaMateria.equipamientoRequerido.includes(equipo)
+                            ? 'bg-purple-500 text-white'
+                            : 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-300'
+                        }`}
+                      >
+                        {equipo}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Botones */}
+              <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-slate-200 dark:border-slate-700">
+                <Button
+                  variant="secondary"
+                  onClick={() => { setShowAddMateria(false); setEditingMateria(null); resetNuevaMateria(); }}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  onClick={editingMateria ? guardarEdicionMateria : agregarMateria}
+                  className="bg-indigo-500 hover:bg-indigo-600"
+                >
+                  {editingMateria ? 'Guardar Cambios' : 'Agregar Materia'}
+                </Button>
+              </div>
+            </div>
           </div>
         )}
       </div>

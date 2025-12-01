@@ -50,6 +50,70 @@ class GeminiTestResponse(BaseModel):
     error: Optional[str] = None
 
 
+# ==================== MODELOS PARA PROGRAMADOR DE CLASES ====================
+
+class ClassScheduleEntry(BaseModel):
+    """Entrada de una materia/clase para programar"""
+    id: str
+    materia: str
+    semestre: str
+    estudiantes: int
+    tipo_espacio: str  # aula, laboratorio, auditorio
+    dias: List[str]  # ['Lunes', 'Miércoles', 'Viernes']
+    hora_inicio: str  # '08:00'
+    hora_fin: str  # '10:00'
+    duracion: int  # minutos
+    equipamiento: List[str] = []  # ['proyector', 'computadores', etc.]
+
+
+class ScheduleClassesRequest(BaseModel):
+    """Solicitud para programar múltiples clases"""
+    materias: List[ClassScheduleEntry]
+    fecha_inicio: str  # Fecha de inicio del semestre YYYY-MM-DD
+    fecha_fin: str  # Fecha de fin del semestre YYYY-MM-DD
+    evitar_conflictos: bool = True
+    optimizar_uso_espacios: bool = True
+    preferencias_adicionales: Optional[str] = None
+
+
+class ScheduledClass(BaseModel):
+    """Una clase programada con su espacio asignado"""
+    materia_id: str
+    materia: str
+    semestre: str
+    espacio_asignado: str
+    espacio_id: Optional[int] = None
+    dia: str
+    hora_inicio: str
+    hora_fin: str
+    capacidad_espacio: int
+    estudiantes: int
+    equipamiento_disponible: List[str] = []
+    notas: Optional[str] = None
+
+
+class ScheduleConflict(BaseModel):
+    """Conflicto detectado en la programación"""
+    tipo: str  # 'horario', 'espacio', 'capacidad'
+    descripcion: str
+    materias_afectadas: List[str]
+    sugerencia: str
+
+
+class ScheduleClassesResponse(BaseModel):
+    """Respuesta de la programación de clases"""
+    success: bool
+    mensaje: str
+    clases_programadas: List[ScheduledClass] = []
+    conflictos: List[ScheduleConflict] = []
+    espacios_utilizados: List[dict] = []
+    resumen: dict = {}
+    recomendaciones: List[str] = []
+    horario_generado: Optional[dict] = None
+    model_used: str = "gemini-2.0-flash"
+    timestamp: str = ""
+
+
 @router.get("/test-gemini", response_model=GeminiTestResponse, summary="Probar conexión con Gemini")
 async def test_gemini_connection():
     """
@@ -944,36 +1008,48 @@ class SpaceLayoutResponse(BaseModel):
 
 
 # Constantes de referencia para cálculos de espacio
+# IMPORTANTE: 
+# - PC/Computador: YA INCLUYE escritorio y silla (estación de trabajo completa)
+# - Pupitre: YA INCLUYE mesa y silla (todo en uno)
+# - Proyector: Va en el TECHO, no ocupa espacio en el suelo
+# - Pantalla/Pizarra: Va en la PARED, espacio frontal mínimo para visibilidad
 ESPACIO_REFERENCIA = {
-    # Mobiliario educativo (m² por unidad, incluye espacio de circulación)
-    "computador": {"area": 2.0, "min_separacion": 0.8},
-    "escritorio_estudiante": {"area": 1.5, "min_separacion": 0.6},
-    "silla": {"area": 0.5, "min_separacion": 0.4},
-    "mesa_trabajo": {"area": 2.5, "min_separacion": 0.8},
-    "pupitre": {"area": 1.2, "min_separacion": 0.5},
+    # Estación de trabajo completa (PC + escritorio + silla + espacio circulación)
+    "computador": {"area": 2.5, "min_separacion": 0.8, "incluye": ["escritorio", "silla"], "descripcion": "Estación completa con escritorio y silla"},
+    "pc": {"area": 2.5, "min_separacion": 0.8, "incluye": ["escritorio", "silla"], "descripcion": "Estación completa con escritorio y silla"},
     
-    # Equipo audiovisual
-    "proyector": {"area": 1.0, "min_separacion": 2.0},
-    "pantalla": {"area": 3.0, "min_separacion": 2.0},
-    "televisor": {"area": 1.5, "min_separacion": 1.5},
+    # Mobiliario educativo individual
+    "pupitre": {"area": 1.0, "min_separacion": 0.5, "incluye": ["mesa", "silla"], "descripcion": "Pupitre unipersonal (mesa+silla integradas)"},
+    "silla": {"area": 0.5, "min_separacion": 0.3, "descripcion": "Silla individual sin mesa"},
+    "escritorio_estudiante": {"area": 1.2, "min_separacion": 0.5, "descripcion": "Mesa individual sin silla"},
+    "mesa_trabajo": {"area": 2.0, "min_separacion": 0.6, "descripcion": "Mesa de trabajo compartida"},
+    
+    # Equipo audiovisual (mayoría NO ocupa espacio en suelo)
+    "proyector": {"area": 0.0, "min_separacion": 0, "ubicacion": "techo", "descripcion": "Proyector en techo - no ocupa suelo"},
+    "pantalla": {"area": 0.5, "min_separacion": 2.0, "ubicacion": "pared", "descripcion": "Pantalla en pared - espacio frontal para visibilidad"},
+    "televisor": {"area": 0.3, "min_separacion": 1.5, "ubicacion": "pared", "descripcion": "TV en pared o soporte"},
+    "video_beam": {"area": 0.0, "min_separacion": 0, "ubicacion": "techo", "descripcion": "Video beam en techo"},
     
     # Espacio instructor/docente
-    "escritorio_profesor": {"area": 3.0, "min_separacion": 1.0},
-    "pizarra": {"area": 4.0, "min_separacion": 2.5},
+    "escritorio_profesor": {"area": 2.5, "min_separacion": 1.0, "descripcion": "Escritorio docente con silla"},
+    "pizarra": {"area": 0.0, "min_separacion": 2.5, "ubicacion": "pared", "descripcion": "Pizarra en pared - requiere espacio frontal"},
     
     # Laboratorio
-    "mesa_laboratorio": {"area": 4.0, "min_separacion": 1.2},
-    "equipo_laboratorio": {"area": 2.0, "min_separacion": 1.0},
+    "mesa_laboratorio": {"area": 3.5, "min_separacion": 1.0, "descripcion": "Mesa de laboratorio para 2 personas"},
+    "equipo_laboratorio": {"area": 1.5, "min_separacion": 0.8, "descripcion": "Equipo de laboratorio en mesa"},
     
-    # Estacionamiento (m² por espacio)
-    "vehiculo": {"area": 12.5, "min_separacion": 0.5},  # 2.5m x 5m estándar
-    "motocicleta": {"area": 2.5, "min_separacion": 0.3},  # 1m x 2.5m
-    "vehiculo_discapacitado": {"area": 18.0, "min_separacion": 0.5},  # 3.6m x 5m
+    # Estacionamiento (m² por espacio - dimensiones reales)
+    "vehiculo": {"area": 11.25, "min_separacion": 0.6, "descripcion": "Espacio vehicular estándar 2.5m x 4.5m"},
+    "motocicleta": {"area": 1.4, "min_separacion": 0.3, "descripcion": "Espacio moto 0.7m x 2m"},
+    "vehiculo_discapacitado": {"area": 15.75, "min_separacion": 0.6, "descripcion": "Espacio PMR 3.5m x 4.5m"},
     
     # Oficina
-    "escritorio_oficina": {"area": 4.0, "min_separacion": 1.0},
-    "archivador": {"area": 0.8, "min_separacion": 0.5},
-    "silla_oficina": {"area": 1.0, "min_separacion": 0.5},
+    "escritorio_oficina": {"area": 3.5, "min_separacion": 0.8, "descripcion": "Puesto de trabajo oficina completo"},
+    "archivador": {"area": 0.6, "min_separacion": 0.5, "descripcion": "Archivador vertical"},
+    
+    # Auditorio/Sala de eventos
+    "butaca": {"area": 0.6, "min_separacion": 0.1, "descripcion": "Butaca fija de auditorio"},
+    "silla_plegable": {"area": 0.5, "min_separacion": 0.2, "descripcion": "Silla plegable para eventos"},
 }
 
 
@@ -1280,3 +1356,549 @@ async def get_space_reference_data(
             }
         }
     }
+
+
+# ==================== PROGRAMADOR DE CLASES CON IA ====================
+
+@router.post("/schedule-classes", response_model=ScheduleClassesResponse, summary="Programar múltiples clases con IA")
+async def schedule_classes(
+    request: ScheduleClassesRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user = Depends(get_current_active_user)
+):
+    """
+    Programa múltiples clases/materias de diferentes semestres optimizando:
+    1. Evitar conflictos de horarios entre materias del mismo semestre
+    2. Evitar asignar el mismo espacio a dos clases al mismo tiempo
+    3. Asignar espacios con capacidad adecuada
+    4. Considerar equipamiento requerido
+    
+    Útil para:
+    - Programación semestral de clases universitarias
+    - Gestión de múltiples materias con diferentes requisitos
+    - Evitar cruces de horarios entre materias del mismo semestre
+    """
+    if not settings.GEMINI_API_KEY:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Servicio de IA no configurado. Contacte al administrador."
+        )
+    
+    if not request.materias:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Debe proporcionar al menos una materia para programar"
+        )
+    
+    try:
+        # Obtener espacios disponibles
+        all_spaces = await SpaceCRUD.get_all(db)
+        
+        # Filtrar espacios por tipo y disponibilidad
+        espacios_disponibles = []
+        for space in all_spaces:
+            if space.estado == "disponible":
+                espacios_disponibles.append({
+                    "id": space.id,
+                    "nombre": space.nombre,
+                    "tipo": space.tipo,
+                    "capacidad": space.capacidad,
+                    "ubicacion": space.ubicacion,
+                    "caracteristicas": space.caracteristicas if space.caracteristicas else []
+                })
+        
+        # Preparar datos de materias para el prompt
+        materias_data = []
+        for m in request.materias:
+            materias_data.append({
+                "id": m.id,
+                "materia": m.materia,
+                "semestre": m.semestre,
+                "estudiantes": m.estudiantes,
+                "tipo_espacio": m.tipo_espacio,
+                "dias": m.dias,
+                "hora_inicio": m.hora_inicio,
+                "hora_fin": m.hora_fin,
+                "duracion_minutos": m.duracion,
+                "equipamiento_requerido": m.equipamiento
+            })
+        
+        # Agrupar materias por semestre para análisis de conflictos
+        materias_por_semestre = {}
+        for m in materias_data:
+            sem = m["semestre"]
+            if sem not in materias_por_semestre:
+                materias_por_semestre[sem] = []
+            materias_por_semestre[sem].append(m["materia"])
+        
+        # Configurar Gemini
+        genai.configure(api_key=settings.GEMINI_API_KEY)
+        model = genai.GenerativeModel(GEMINI_MODEL)
+        
+        prompt = f"""Eres un sistema experto en programación académica. Tu tarea es asignar espacios físicos a las siguientes materias evitando cualquier conflicto.
+
+MATERIAS A PROGRAMAR:
+{json.dumps(materias_data, indent=2, ensure_ascii=False)}
+
+ESPACIOS DISPONIBLES:
+{json.dumps(espacios_disponibles, indent=2, ensure_ascii=False)}
+
+PERÍODO ACADÉMICO:
+- Fecha inicio: {request.fecha_inicio}
+- Fecha fin: {request.fecha_fin}
+
+MATERIAS POR SEMESTRE (para validar conflictos):
+{json.dumps(materias_por_semestre, indent=2, ensure_ascii=False)}
+
+REGLAS CRÍTICAS:
+1. Las materias del MISMO SEMESTRE NO pueden tener el mismo horario (los estudiantes no pueden estar en dos clases a la vez)
+2. El MISMO ESPACIO no puede ser asignado a dos clases en el mismo día y hora
+3. La CAPACIDAD del espacio debe ser >= número de estudiantes de la materia
+4. Preferir espacios con el EQUIPAMIENTO requerido
+5. Optimizar el uso de espacios (no usar aulas de 100 para 20 estudiantes si hay alternativas)
+
+{f"PREFERENCIAS ADICIONALES: {request.preferencias_adicionales}" if request.preferencias_adicionales else ""}
+
+RESPONDE ÚNICAMENTE CON UN JSON VÁLIDO con esta estructura exacta:
+{{
+    "success": true/false,
+    "mensaje": "Resumen de la programación",
+    "clases_programadas": [
+        {{
+            "materia_id": "id de la materia",
+            "materia": "nombre de la materia",
+            "semestre": "semestre",
+            "espacio_asignado": "nombre del espacio",
+            "espacio_id": id_numerico_o_null,
+            "dia": "Lunes/Martes/etc",
+            "hora_inicio": "08:00",
+            "hora_fin": "10:00",
+            "capacidad_espacio": 40,
+            "estudiantes": 25,
+            "equipamiento_disponible": ["proyector", "computadores"],
+            "notas": "observaciones opcionales"
+        }}
+    ],
+    "conflictos": [
+        {{
+            "tipo": "horario/espacio/capacidad",
+            "descripcion": "Descripción del conflicto",
+            "materias_afectadas": ["Materia1", "Materia2"],
+            "sugerencia": "Cómo resolver el conflicto"
+        }}
+    ],
+    "espacios_utilizados": [
+        {{
+            "espacio_id": 1,
+            "nombre": "Nombre",
+            "horas_semanales": 10,
+            "materias_asignadas": 3
+        }}
+    ],
+    "resumen": {{
+        "total_materias": 5,
+        "materias_programadas": 5,
+        "materias_con_conflicto": 0,
+        "espacios_usados": 3,
+        "eficiencia_uso_espacios": 85.5
+    }},
+    "recomendaciones": [
+        "Recomendación 1",
+        "Recomendación 2"
+    ],
+    "horario_generado": {{
+        "Lunes": {{
+            "08:00-10:00": [{{"materia": "X", "espacio": "Y", "semestre": "Z"}}],
+            "10:00-12:00": [{{"materia": "A", "espacio": "B", "semestre": "C"}}]
+        }},
+        "Martes": {{ ... }}
+    }}
+}}
+
+Si hay conflictos que no puedes resolver, márcalos claramente pero intenta programar las demás materias.
+Si no hay suficientes espacios, indica cuáles materias no pudieron ser programadas y por qué."""
+
+        # Ejecutar en thread pool para async
+        loop = asyncio.get_event_loop()
+        response = await loop.run_in_executor(
+            executor,
+            lambda: model.generate_content(prompt)
+        )
+        
+        if not response or not response.text:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="No se pudo obtener respuesta del modelo de IA"
+            )
+        
+        # Limpiar respuesta
+        text = response.text.strip()
+        if text.startswith("```json"):
+            text = text[7:]
+        if text.startswith("```"):
+            text = text[3:]
+        if text.endswith("```"):
+            text = text[:-3]
+        
+        ai_result = json.loads(text.strip())
+        logger.info(f"Programación de clases generada: {len(ai_result.get('clases_programadas', []))} clases")
+        
+        # Construir respuesta
+        return ScheduleClassesResponse(
+            success=ai_result.get("success", False),
+            mensaje=ai_result.get("mensaje", "Programación completada"),
+            clases_programadas=[
+                ScheduledClass(**clase) for clase in ai_result.get("clases_programadas", [])
+            ],
+            conflictos=[
+                ScheduleConflict(**conf) for conf in ai_result.get("conflictos", [])
+            ],
+            espacios_utilizados=ai_result.get("espacios_utilizados", []),
+            resumen=ai_result.get("resumen", {}),
+            recomendaciones=ai_result.get("recomendaciones", []),
+            horario_generado=ai_result.get("horario_generado"),
+            model_used=GEMINI_MODEL,
+            timestamp=datetime.utcnow().isoformat()
+        )
+        
+    except json.JSONDecodeError as e:
+        logger.error(f"Error parsing AI schedule response: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error al procesar la respuesta de IA. Intente nuevamente."
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error en schedule-classes: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al programar clases: {str(e)}"
+        )
+
+
+# ==================== GENERADOR DE HORARIOS ACADÉMICOS ====================
+
+class MateriaInput(BaseModel):
+    """Entrada de una materia desde el frontend"""
+    nombre_materia: str
+    semestre: str
+    programa: str
+    docente: Optional[str] = ""
+    numero_estudiantes: int
+    horas_semanales: int
+    tipo_espacio: str  # aula, laboratorio, auditorio
+    equipamiento_requerido: List[str] = []
+    dias_preferidos: List[str] = []  # ['monday', 'wednesday', 'friday']
+    hora_inicio_preferida: str = "07:00"
+    hora_fin_preferida: str = "19:00"
+
+
+class GenerateScheduleRequest(BaseModel):
+    """Solicitud para generar horario académico"""
+    periodo_academico: str  # Ej: "2024-1"
+    fecha_inicio: str  # YYYY-MM-DD
+    fecha_fin: str  # YYYY-MM-DD
+    materias: List[MateriaInput]
+    evitar_cruces: bool = True
+    optimizar_uso_espacios: bool = True
+
+
+class HorarioItem(BaseModel):
+    """Una clase asignada en el horario - formato esperado por frontend"""
+    materia: str
+    semestre: str
+    programa: str
+    docente: str
+    dia: str
+    hora_inicio: str
+    hora_fin: str
+    espacio: str  # Frontend espera 'espacio' no 'espacio_asignado'
+    espacio_id: Optional[int] = None
+    capacidad_espacio: Optional[int] = None
+    estudiantes: Optional[int] = None
+    equipamiento: List[str] = []
+
+
+class GenerateScheduleResponse(BaseModel):
+    """Respuesta del generador de horarios - formato esperado por frontend"""
+    success: bool
+    message: str  # Frontend espera 'message' no 'mensaje'
+    horarios: List[HorarioItem] = []  # Frontend espera 'horarios' no 'horario'
+    conflictos: List[str] = []  # Frontend espera lista de strings
+    estadisticas: dict = {}  # Frontend espera 'estadisticas' no 'resumen'
+    horario_por_dia: dict = {}
+    horario_por_semestre: dict = {}
+    espacios_asignados: List[dict] = []
+    recomendaciones: List[str] = []
+    model_used: str = "gemini-2.0-flash"
+    timestamp: str = ""
+
+
+@router.post("/generate-schedule", response_model=GenerateScheduleResponse, summary="Generar horario académico con IA")
+async def generate_schedule(
+    request: GenerateScheduleRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user = Depends(get_current_active_user)
+):
+    """
+    Genera un horario académico óptimo para múltiples materias.
+    
+    La IA se encarga de:
+    1. Asignar espacios adecuados según capacidad y tipo
+    2. Evitar cruces de horarios entre materias del mismo semestre
+    3. Evitar asignar el mismo espacio a dos clases simultáneas
+    4. Considerar el equipamiento requerido
+    5. Optimizar el uso de los espacios disponibles
+    
+    Ideal para:
+    - Programación semestral de clases universitarias
+    - Coordinación de múltiples programas académicos
+    - Gestión eficiente de espacios compartidos
+    """
+    if not settings.GEMINI_API_KEY:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Servicio de IA no configurado. Contacte al administrador."
+        )
+    
+    if not request.materias:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Debe proporcionar al menos una materia para generar el horario"
+        )
+    
+    try:
+        # Obtener espacios disponibles de la base de datos
+        all_spaces = await SpaceCRUD.get_all(db)
+        
+        # Filtrar espacios disponibles
+        espacios_disponibles = []
+        for space in all_spaces:
+            if space.estado == "disponible":
+                espacios_disponibles.append({
+                    "id": space.id,
+                    "nombre": space.nombre,
+                    "tipo": space.tipo.lower() if space.tipo else "aula",
+                    "capacidad": space.capacidad or 30,
+                    "ubicacion": space.ubicacion or "",
+                    "caracteristicas": space.caracteristicas if space.caracteristicas else []
+                })
+        
+        # Si no hay espacios en BD, crear espacios ficticios para demostración
+        if not espacios_disponibles:
+            espacios_disponibles = [
+                {"id": 1, "nombre": "Aula 101", "tipo": "aula", "capacidad": 40, "ubicacion": "Edificio A", "caracteristicas": ["Video Beam", "Aire Acondicionado"]},
+                {"id": 2, "nombre": "Aula 102", "tipo": "aula", "capacidad": 35, "ubicacion": "Edificio A", "caracteristicas": ["Video Beam", "Pizarra Blanca"]},
+                {"id": 3, "nombre": "Aula 201", "tipo": "aula", "capacidad": 50, "ubicacion": "Edificio B", "caracteristicas": ["Video Beam", "Aire Acondicionado", "Sonido"]},
+                {"id": 4, "nombre": "Aula 202", "tipo": "aula", "capacidad": 45, "ubicacion": "Edificio B", "caracteristicas": ["Video Beam"]},
+                {"id": 5, "nombre": "Lab. Informática 1", "tipo": "laboratorio", "capacidad": 30, "ubicacion": "Edificio C", "caracteristicas": ["Ordenador", "Laboratorio Informática", "Aire Acondicionado"]},
+                {"id": 6, "nombre": "Lab. Informática 2", "tipo": "laboratorio", "capacidad": 25, "ubicacion": "Edificio C", "caracteristicas": ["Ordenador", "Laboratorio Informática"]},
+                {"id": 7, "nombre": "Auditorio Principal", "tipo": "auditorio", "capacidad": 150, "ubicacion": "Edificio Central", "caracteristicas": ["Video Beam", "Sonido", "Aire Acondicionado", "Butacas"]},
+                {"id": 8, "nombre": "Sala Conferencias", "tipo": "sala_conferencias", "capacidad": 60, "ubicacion": "Edificio A", "caracteristicas": ["Video Beam", "Sonido", "Aire Acondicionado"]},
+            ]
+        
+        # Mapeo de días inglés -> español
+        dias_map = {
+            'monday': 'Lunes',
+            'tuesday': 'Martes', 
+            'wednesday': 'Miércoles',
+            'thursday': 'Jueves',
+            'friday': 'Viernes',
+            'saturday': 'Sábado',
+            'sunday': 'Domingo'
+        }
+        
+        # Preparar datos de materias
+        materias_data = []
+        for idx, m in enumerate(request.materias):
+            dias_espanol = [dias_map.get(d.lower(), d) for d in m.dias_preferidos]
+            materias_data.append({
+                "id": f"mat_{idx + 1}",
+                "nombre_materia": m.nombre_materia,
+                "semestre": m.semestre,
+                "programa": m.programa,
+                "docente": m.docente or "Por asignar",
+                "numero_estudiantes": m.numero_estudiantes,
+                "horas_semanales": m.horas_semanales,
+                "tipo_espacio": m.tipo_espacio,
+                "equipamiento_requerido": m.equipamiento_requerido,
+                "dias_preferidos": dias_espanol,
+                "hora_inicio_preferida": m.hora_inicio_preferida,
+                "hora_fin_preferida": m.hora_fin_preferida
+            })
+        
+        # Agrupar por semestre y programa para detectar conflictos
+        grupos_estudiantes = {}
+        for m in materias_data:
+            key = f"{m['programa']}_{m['semestre']}"
+            if key not in grupos_estudiantes:
+                grupos_estudiantes[key] = []
+            grupos_estudiantes[key].append(m['nombre_materia'])
+        
+        # Configurar Gemini
+        genai.configure(api_key=settings.GEMINI_API_KEY)
+        model = genai.GenerativeModel(GEMINI_MODEL)
+        
+        prompt = f"""Eres un experto sistema de programación académica universitaria. Tu tarea es crear un horario óptimo para las siguientes materias.
+
+PERÍODO ACADÉMICO: {request.periodo_academico}
+FECHAS: {request.fecha_inicio} al {request.fecha_fin}
+
+MATERIAS A PROGRAMAR:
+{json.dumps(materias_data, indent=2, ensure_ascii=False)}
+
+ESPACIOS DISPONIBLES:
+{json.dumps(espacios_disponibles, indent=2, ensure_ascii=False)}
+
+GRUPOS DE ESTUDIANTES (mismo programa + semestre = mismos estudiantes):
+{json.dumps(grupos_estudiantes, indent=2, ensure_ascii=False)}
+
+REGLAS OBLIGATORIAS:
+1. CRUCES DE HORARIO: Las materias del MISMO PROGRAMA Y SEMESTRE no pueden coincidir en horario (los mismos estudiantes las cursan)
+2. ESPACIO ÚNICO: Un espacio solo puede tener UNA clase a la vez
+3. CAPACIDAD: El espacio debe tener capacidad >= número de estudiantes
+4. TIPO DE ESPACIO: Respetar el tipo solicitado (aula, laboratorio, auditorio)
+5. HORAS SEMANALES: Distribuir las horas semanales de cada materia en los días preferidos
+6. BLOQUES: Cada bloque de clase debe ser de 2 horas continuas máximo
+7. HORARIO: Solo programar entre las horas preferidas de cada materia
+
+PREFERENCIAS:
+- Evitar huecos en el horario de los estudiantes
+- Preferir espacios con el equipamiento requerido
+- No usar espacios muy grandes para grupos pequeños
+
+RESPONDE ÚNICAMENTE CON JSON VÁLIDO (sin explicaciones adicionales):
+{{
+    "success": true,
+    "message": "Horario generado exitosamente para X materias",
+    "horarios": [
+        {{
+            "materia": "Nombre de la materia",
+            "semestre": "1",
+            "programa": "Ingeniería de Sistemas",
+            "docente": "Nombre del docente",
+            "dia": "Lunes",
+            "hora_inicio": "08:00",
+            "hora_fin": "10:00",
+            "espacio": "Aula 101",
+            "espacio_id": 1,
+            "capacidad_espacio": 40,
+            "estudiantes": 25,
+            "equipamiento": ["Video Beam", "Aire Acondicionado"]
+        }}
+    ],
+    "conflictos": [
+        "Descripción del conflicto 1 y cómo se resolvió",
+        "Descripción del conflicto 2 y cómo se resolvió"
+    ],
+    "estadisticas": {{
+        "total_materias": 5,
+        "total_clases": 15,
+        "conflictos_detectados": 0,
+        "espacios_utilizados": 4,
+        "horas_totales": 30,
+        "eficiencia": 95
+    }},
+    "horario_por_dia": {{
+        "Lunes": [
+            {{"hora": "08:00-10:00", "materia": "X", "espacio": "Y", "programa": "Z", "semestre": "1"}}
+        ],
+        "Martes": [],
+        "Miércoles": [],
+        "Jueves": [],
+        "Viernes": []
+    }},
+    "horario_por_semestre": {{
+        "Ingeniería de Sistemas_1": [
+            {{"materia": "X", "dia": "Lunes", "hora": "08:00-10:00", "espacio": "Y"}}
+        ]
+    }},
+    "espacios_asignados": [
+        {{"id": 1, "nombre": "Aula 101", "horas_ocupadas": 10, "materias": ["Mat1", "Mat2"]}}
+    ],
+    "recomendaciones": [
+        "Se recomienda agregar más espacios tipo laboratorio",
+        "El Aula 101 tiene alta ocupación"
+    ]
+}}
+
+IMPORTANTE: 
+- Cada materia debe aparecer en el horario tantas veces como sea necesario según sus horas semanales
+- Si una materia tiene 4 horas semanales, debe aparecer 2 veces (bloques de 2 horas)
+- Verificar que no haya cruces para estudiantes del mismo programa y semestre
+- Si no puedes asignar alguna materia, agrégala a conflictos con la razón
+- El campo "conflictos" debe ser un array de strings descriptivos"""
+
+        # Ejecutar en thread pool
+        loop = asyncio.get_event_loop()
+        response = await loop.run_in_executor(
+            executor,
+            lambda: model.generate_content(prompt)
+        )
+        
+        if not response or not response.text:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="No se pudo obtener respuesta del modelo de IA"
+            )
+        
+        # Limpiar respuesta
+        text = response.text.strip()
+        if text.startswith("```json"):
+            text = text[7:]
+        if text.startswith("```"):
+            text = text[3:]
+        if text.endswith("```"):
+            text = text[:-3]
+        
+        ai_result = json.loads(text.strip())
+        logger.info(f"Horario generado: {len(ai_result.get('horarios', []))} bloques de clase")
+        
+        # Convertir horarios a formato esperado
+        horarios_formateados = []
+        for clase in ai_result.get("horarios", []):
+            horarios_formateados.append(HorarioItem(
+                materia=clase.get("materia", ""),
+                semestre=str(clase.get("semestre", "")),
+                programa=clase.get("programa", ""),
+                docente=clase.get("docente", "Por asignar"),
+                dia=clase.get("dia", ""),
+                hora_inicio=clase.get("hora_inicio", ""),
+                hora_fin=clase.get("hora_fin", ""),
+                espacio=clase.get("espacio", ""),
+                espacio_id=clase.get("espacio_id"),
+                capacidad_espacio=clase.get("capacidad_espacio"),
+                estudiantes=clase.get("estudiantes"),
+                equipamiento=clase.get("equipamiento", [])
+            ))
+        
+        # Construir respuesta
+        return GenerateScheduleResponse(
+            success=ai_result.get("success", True),
+            message=ai_result.get("message", "Horario generado exitosamente"),
+            horarios=horarios_formateados,
+            conflictos=ai_result.get("conflictos", []),
+            estadisticas=ai_result.get("estadisticas", {}),
+            horario_por_dia=ai_result.get("horario_por_dia", {}),
+            horario_por_semestre=ai_result.get("horario_por_semestre", {}),
+            espacios_asignados=ai_result.get("espacios_asignados", []),
+            recomendaciones=ai_result.get("recomendaciones", []),
+            model_used=GEMINI_MODEL,
+            timestamp=datetime.utcnow().isoformat()
+        )
+        
+    except json.JSONDecodeError as e:
+        logger.error(f"Error parsing AI schedule response: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error al procesar la respuesta de IA. Por favor intente nuevamente."
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error en generate-schedule: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al generar el horario: {str(e)}"
+        )
